@@ -1,17 +1,20 @@
-import os
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PySide6.QtCore import QUrl
+import pyaudio
+import wave
 
-class SoundPlayer:
-  def __init__(self):
-    self.player = QMediaPlayer()
-    self.audio_output = QAudioOutput()
-    self.player.setAudioOutput(self.audio_output)
+def play_sequence(file_path):
+  wf = wave.open(file_path, 'rb')
 
-  def play_sound(self, file_path):
-    if not os.path.exists(file_path):
-      print("MP3 file dose not exist:", file_path)
-      return
-    url = QUrl.fromLocalFile(os.path.abspath(file_path))
-    self.player.setSource(url)
-    self.player.play()
+  p = pyaudio.PyAudio()
+  stream = p.open(format=pyaudio.paInt16,
+                  channels=wf.getnchannels(),
+                  rate=wf.getframerate(),
+                  output=True)
+
+  data = wf.readframes(1024)
+  while data:
+    stream.write(data)
+    data = wf.readframes(1024)
+
+  stream.stop_stream()
+  stream.close()
+  p.terminate()

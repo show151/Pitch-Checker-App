@@ -1,47 +1,88 @@
-from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QLabel
-from PySide6.QtGui import QFont, QPalette, QColor
-from logic.sound_player import SoundPlayer
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, QComboBox
+from PySide6.QtCore import QTimer, Qt
+from logic.sound_player import play_sequence
+from logic.recorder import Recorder
+from logic.pitch_detector import detect_pitch
+from logic.matcher import match_pitch
+import config
 
-class MainWindow(QWidget):
+class MainWindow(QMainWindow):
   def __init__(self):
     super().__init__()
-    self.setWindowTitle("Pitch Checker App")
-    self.resize(800, 600)
-    self.init_ui()
-    self.sound_player = SoundPlayer()
+    self.setWindowTitle("音程練習アプリ")
+    self.setFixedSize(600, 400)
+    self.setStyleSheet("background-color: #1E2A38; color: #FFFFFF;")
 
-  def init_ui(self):
-    palette = QPalette()
-    palette.setColor(QPalette.Window, QColor("#1E1E2F"))
-    palette.setColor(QPalette.Button, QColor("#3A7BD5"))
-    palette.setColor(QPalette.ButtonText, QColor("#FFFFFF"))
-    self.setPalette(palette)
+    self.sound_sel = QComboBox(self)
+    self.sound_sel.addItems(config.SEQUENCIES.keys())
+    self.sound_sel.setStyleSheet("font-size: 18px; padding: 5px;")
+
+    self.label = QLabel("一致率", self)
+    self.label.setAlignment(Qt.AlignCenter)
+    self.label.setStyleSheet("font-size: 24px;")
+
+    self.result_label = QLabel("", self)
+    self.result_label.setAlignment(Qt.AlignCenter)
+    self.result_label.setStyleSheet("font-size: 20px;")
+
+    self.play_bt = QPushButton("再生", self)
+    self.play_bt.clicked.connect(self.play_and_record)
+    self.play_bt.setStyleSheet("""
+      background-color: #3498db;
+      color: white;
+      font-size: 18px;
+      border-radius: 10px;
+      padding: 10px;
+    """)
 
     layout = QVBoxLayout()
+    layout.addWidget(self.label)
+    layout.addWidget(self.sound_sel)
+    layout.addWidget(self.play_bt)
+    layout.addWidget(self.result_label)
 
-    self.info_label = QLabel("正解音を再生します")
-    self.info_label.setFont(QFont("Arial", 16))
-    self.info_label.setStyleSheet("color: white;")
-    layout.addWidget(self.info_label)
+    container = QWidget()
+    container.setLayout(layout)
+    self.setCentralWidget(container)
 
-    self.play_button = QPushButton("正解音再生")
-    self.play_button.setFont(QFont("Arial", 14))
-    self.play_button.setStyleSheet("""
-      QPushButton {
-        background-color: #3A7BD5;
-        color: white;
-        border-radius: 10px;
-        padding: 10px;
-      }
-      QPushButton:hover {
-        background-color: #5AA9F1;
-      }
-    """)
-    self.play_button.clicked.connect(self.play_reference_sound)
-    layout.addWidget(self.play_button)
+  def play_and_record(self):
+    self.result_label.setText("")
+    self.play_bt.setEnabled(False)
 
-    self.setLayout(layout)
+    selected_sound = self.sound_sel.currentText()
+    play_sequence(selected_sound)
 
-  def play_reference_sound(self):
-    mp3_path = ""
-    self.sound_player.play_sound(mp3_path)
+    self.countdown = 3
+    self.label.setText(str(self.countdown))
+
+    self.timer = QTimer(self)
+    self.timer.timeout.connect(self.update_countdown)
+    self.timer.start(1000)
+
+  def update_countdown(self):
+    self.countdown -= 1
+    if self.countdown > 0:
+      self.label.setText(str(self.countdown))
+    else:
+      self.timer.stop()
+      self.label.setText("録音中")
+      self.record_audio()
+
+  def record_audio(self):
+    recorder = Recorder()
+    audio_data = recorder.record()
+
+    detected_pitch = detect_pitch(audio_data)
+    selected_sound = self.sound_sel.currentText()
+    target_pitches = [config.NOTE_FREQUENCIES[note]
+                      for note in config.SEQUENCIES[selected_sound]]
+    match_rate = match_pitch(detected_pitch, target_pitches)
+
+    self.result_label.setText(f"一致率: {match_rate}%")
+
+    if match_rate >= 80:
+      self.setStyleSheet("background-color: #2ecc71; color: #FFFFFF;")
+    else:
+      self.setStyleSheet("background-color: #e74c3c; color: #FFFFFF;")
+
+    self.play_bt.setEnabled(True)
